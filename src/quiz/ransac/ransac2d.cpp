@@ -1,4 +1,4 @@
-/* \author Aaron Brown */
+/* \author Aaron Brown & Roger Fleenor */
 // Quiz on implementing simple RANSAC line fitting
 
 #include "../../render/render.h"
@@ -163,63 +163,95 @@ std::unordered_set<int> Ransac3D(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, int 
     srand(time(NULL));
     
     // TODO: Fill in this function
-    int best_a, best_b, best_c, best_d;
+    int a_max, b_max, c_max, d_max;
     int max_inliners = 0;
     int size = cloud->points.size();
     
     // For max iterations
-    for(int i=0;i<maxIterations;i++)
-    {
+    while(maxIterations--){
+
         int inliners = 0;
         // Randomly sample subset and fit line
         std::tuple<int, int, int> ind = RandomTriple(size);
+
+		//3 points, 2 vectors
+		
+		/*
+		point1=(x1,y1,z1)
+		point2=(x2,y2,z2)
+		point3=(x3,y3,z3)
+		*/
+
+		//create point indices for each dimension
 
         int ind1 = std::get<0>(ind);
         int ind2 = std::get<1>(ind);
         int ind3 = std::get<2>(ind);
 
-        float a = (cloud->points[ind2].y-cloud->points[ind1].y)*(cloud->points[ind3].z-cloud->points[ind1].z)
-        - (cloud->points[ind2].z-cloud->points[ind1].z)*(cloud->points[ind3].y-cloud->points[ind1].y);
-        
-        float b = - (cloud->points[ind2].x-cloud->points[ind1].x)*(cloud->points[ind3].z-cloud->points[ind1].z)
-        + (cloud->points[ind2].z-cloud->points[ind1].z)*(cloud->points[ind3].x-cloud->points[ind1].x);
-        
-        float c = (cloud->points[ind2].x-cloud->points[ind1].x)*(cloud->points[ind3].y-cloud->points[ind1].y)
-        - (cloud->points[ind2].y-cloud->points[ind1].y)*(cloud->points[ind3].x-cloud->points[ind1].x);
+		float x1, y1, z1, x2, y2, z2, x3, y3, z3;
 
-        float x = cloud->points[ind1].x;
-        float y = cloud->points[ind1].y;
-        float z = cloud->points[ind1].z;
+		x1 = cloud->points[ind1].x;
+		y1 = cloud->points[ind1].y;
+		z1 = cloud->points[ind1].z;
+
+		x2 = cloud->points[ind2].x;
+		y2 = cloud->points[ind2].y;
+		z2 = cloud->points[ind2].z;
+
+		x3 = cloud->points[ind3].x;
+		y3 = cloud->points[ind3].y;
+		z3 = cloud->points[ind3].z;
+
+		//v1 = <x2-x1, y2-y1, z2-z1>
+		//v2 = <x3-x1, y3-y1, z3-z1>
+
+		//apply cross product: v1 X v2 = <i, j, k>
+
+		//<(y2-y1)*(z3-z1)-(z2-z1)*(y3-y1), (z2-z1)*(x3-x1)-(x2-x1)*(z3-z1), (x2-x1)(y3-y1)-(y2-y1)(x3-x1)>
+		
+		float a, b, c, x, y, z;
+
+		a = (y2-y1)*(z3-z1)-(z2-z1)*(y3-y1);
+		b = (z2-z1)*(x3-x1)-(x2-x1)*(z3-z1);
+		c = (x2-x1)*(y3-y1)-(y2-y1)*(x3-x1);
+
+        x = cloud->points[ind1].x;
+        y = cloud->points[ind1].y;
+        z = cloud->points[ind1].z;
         
-        float d = - (a*x + b*y + c*z);
+        float d = -(a*x + b*y + c*z); //calculate distance
         
         // Measure distance between every point and fitted line
-        for(int j=0;j<size;j++)
-        {
-            float div = sqrt(a*a + b*b + c*c);
-            float dist = abs(cloud->points[j].x*a + cloud->points[j].y*b + cloud->points[j].z*c + d)/div;
-            // If distance is smaller than threshold count it as inlier
-            if(dist <= distanceTol)
+
+        for(int j=0;j<size;j++){
+
+            float dist = abs(cloud->points[j].x*a + cloud->points[j].y*b + cloud->points[j].z*c + d)/sqrt(a*a + b*b + c*c);
+
+            if(dist <= distanceTol){ // If distance is smaller than threshold count it as inlier
                 inliners++;
-        }
-        if(inliners > max_inliners)
-        {
-            best_a = a;
-            best_b = b;
-            best_c = c;
-            best_d = d;
+			}
+
+        } //close for
+		
+		 if(inliners > max_inliners){
+
+            a_max = a;
+            b_max = b;
+            c_max = c;
+            d_max = d;
             max_inliners = inliners;
+
         }
     }
     
     // Return indicies of inliers from fitted line with most inliers
     for(int j=0;j<size;j++)
     {
-        float div = sqrt(best_a*best_a + best_b*best_b + best_c*best_c);
-        float dist = abs(cloud->points[j].x*best_a + cloud->points[j].y*best_b + cloud->points[j].z*best_c + best_d)/div;
-        // If distance is smaller than threshold count it as inlier
-        if(dist <= distanceTol)
+        float dist = abs(cloud->points[j].x*a_max + cloud->points[j].y*b_max + cloud->points[j].z*c_max + d_max)/sqrt(a_max*a_max + b_max*b_max + c_max*c_max);
+
+        if(dist <= distanceTol) { // If distance is smaller than threshold count it as inlier
             inliersResult.insert(j);
+		}
     }
     
     auto endTime = std::chrono::steady_clock::now();
@@ -236,12 +268,12 @@ int main ()
 	pcl::visualization::PCLVisualizer::Ptr viewer = initScene();
 
 	// Create data
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = CreateData(); //2d
-	//pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = CreateData3D(); //3d
+	//pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = CreateData(); //2d
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = CreateData3D(); //3d
 
 	// TODO: Change the max iteration and distance tolerance arguments for Ransac function
-	std::unordered_set<int> inliers = Ransac2D(cloud, 10, 1.0);
-	//std::unordered_set<int> inliers = Ransac3D(cloud, 10, 1.0);
+	//std::unordered_set<int> inliers = Ransac2D(cloud, 10, 1.0);
+	std::unordered_set<int> inliers = Ransac3D(cloud, 10, 1.0);
 
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloudInliers(new pcl::PointCloud<pcl::PointXYZ>());
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloudOutliers(new pcl::PointCloud<pcl::PointXYZ>());
